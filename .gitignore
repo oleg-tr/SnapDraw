@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# py2app build artifacts
+build/
+dist/
+*.spec
+
+# macOS
+.DS_Store
+
+# Local config (persists user settings)
+.snapdraw_config
