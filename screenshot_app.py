@@ -277,18 +277,19 @@ def undo():
 def save_and_close():
     composite = Image.alpha_composite(img, draw_layer).convert("RGB")
     if save_path == "clipboard":
-        import tempfile, subprocess
-        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-        tmp.close()
-        composite.save(tmp.name)
-        subprocess.run([
-            "osascript", "-e",
-            'set the clipboard to (read (POSIX file "' + tmp.name + '") as «class PNGf»)'
-        ])
-        try:
-            os.remove(tmp.name)
-        except OSError:
-            pass
+        import io, time
+        from AppKit import NSPasteboard, NSPasteboardItem, NSPasteboardTypePNG
+        from Foundation import NSData
+        buf = io.BytesIO()
+        composite.save(buf, format="PNG")
+        png_bytes = buf.getvalue()
+        pb = NSPasteboard.generalPasteboard()
+        pb.clearContents()
+        item = NSPasteboardItem.alloc().init()
+        data = NSData.dataWithBytes_length_(png_bytes, len(png_bytes))
+        item.setData_forType_(data, NSPasteboardTypePNG)
+        pb.writeObjects_([item])
+        time.sleep(0.5)
     else:
         composite.save(save_path)
     root.destroy()
@@ -312,18 +313,31 @@ root.mainloop()
 
 def open_annotator(image_path: str, save_path: str):
     """Launch the Tk annotator in a separate Python process."""
-    import tempfile, textwrap
+    import tempfile
     script_file = tempfile.NamedTemporaryFile(
-        suffix=".py", delete=False, mode="w"
+        suffix=".py", delete=False, mode="w", encoding="utf-8"
     )
-    script_file.write(
-        "import sys\nsys.path.insert(0,'/usr/local/lib/python3.11/site-packages')\n"
-        "sys.path.insert(0,'/opt/homebrew/lib/python3.11/site-packages')\n"
-        + ANNOTATOR_SCRIPT
-    )
+    script_file.write(ANNOTATOR_SCRIPT)
     script_file.flush()
+    script_file.close()
+
+    # Inside a py2app bundle, sys.executable is the bundle launcher, not python.
+    # Locate a real python3 interpreter that has Pillow + pyobjc installed.
+    python_bin = os.environ.get("SNAPDRAW_PYTHON")
+    if not python_bin:
+        for candidate in (
+            str(Path(__file__).resolve().parent.parent.parent.parent / ".venv" / "bin" / "python"),
+            "/opt/homebrew/opt/python@3.12/bin/python3.12",
+            "/opt/homebrew/bin/python3.12",
+            "/usr/local/bin/python3.12",
+            sys.executable,
+        ):
+            if candidate and os.path.exists(candidate):
+                python_bin = candidate
+                break
+
     subprocess.Popen(
-        [sys.executable, script_file.name, image_path, save_path]
+        [python_bin, script_file.name, image_path, save_path]
     )
 
 
